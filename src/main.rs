@@ -1,12 +1,16 @@
 use std::error::Error;
 use std::fs;
 use std::io::{stdout, BufWriter, Write};
+use std::process;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "dump", about = "an minimal hexdump")]
 struct Opt {
     file: String,
+
+    #[structopt(short, long)]
+    seek: usize,
 }
 
 fn to_hex(byte: u8) -> String {
@@ -29,17 +33,17 @@ fn line_view(bytes: &[u8], byte_count: usize) -> String {
     format!("{} | {} | {} \n", address, hexes, asciis)
 }
 
-fn hex_view(bytes: &[u8]) {
+fn hex_view(bytes: &[u8], seek_value: usize) {
     let mut writer = BufWriter::new(stdout());
     let elem_per_row = 16;
 
-    let mut start = 0;
+    let mut start = seek_value;
     while start + elem_per_row < bytes.len() {
         let line = line_view(&bytes[start..start + elem_per_row], start);
-        write!(writer, "{}", line);
+        write!(writer, "{}", line).unwrap();
         start += elem_per_row;
     }
-    write!(writer, "{}", line_view(&bytes[start..], start));
+    write!(writer, "{}", line_view(&bytes[start..], start)).unwrap();
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -47,7 +51,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let content = fs::read(args.file)?;
 
-    hex_view(&content);
+    let file_length = content.len();
+
+    if args.seek > file_length {
+        eprintln!(
+            "Cannot seek {} bytes in a file with size {} bytes.",
+            args.seek, file_length
+        );
+        process::exit(1);
+    }
+    hex_view(&content, args.seek);
 
     Ok(())
 }
