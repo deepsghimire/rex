@@ -1,4 +1,4 @@
-#rex
+# rex
 
 Hex Editor
 ---
