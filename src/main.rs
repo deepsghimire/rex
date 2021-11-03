@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fs;
-use std::io::{stdout, BufWriter, Write};
-use std::process;
+use std::io;
+use std::io::{stdout, BufReader, BufWriter, Read, Seek, Write};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -11,6 +11,15 @@ struct Opt {
 
     #[structopt(short, long)]
     seek: usize,
+
+    #[structopt(short, long)]
+    length: usize,
+}
+
+struct ViewInfo {
+    filename: String,
+    seek: usize,
+    length: usize,
 }
 
 fn to_hex(byte: u8) -> String {
@@ -33,34 +42,54 @@ fn line_view(bytes: &[u8], byte_count: usize) -> String {
     format!("{} | {} | {} \n", address, hexes, asciis)
 }
 
-fn hex_view(bytes: &[u8], seek_value: usize) {
-    let mut writer = BufWriter::new(stdout());
-    let elem_per_row = 16;
+fn buffered_writer() -> BufWriter<io::Stdout> {
+    let writer = BufWriter::new(stdout());
+    writer
+}
 
-    let mut start = seek_value;
-    while start + elem_per_row < bytes.len() {
-        let line = line_view(&bytes[start..start + elem_per_row], start);
-        write!(writer, "{}", line).unwrap();
-        start += elem_per_row;
+fn buffered_reader(filename: &str) -> Result<BufReader<fs::File>, Box<dyn Error>> {
+    let handle = fs::File::open(filename)?;
+    let reader = BufReader::new(handle);
+    Ok(reader)
+}
+
+fn hex_view(info: ViewInfo) -> Result<(), Box<dyn Error>> {
+    let mut writer = buffered_writer();
+    let mut reader = buffered_reader(&info.filename)?;
+
+    let mut buffer;
+    if info.length < 16 {
+        buffer = Vec::with_capacity(info.length);
+        buffer.resize(info.length, 0);
+    } else {
+        buffer = Vec::with_capacity(16);
+        buffer.resize(16, 0);
     }
-    write!(writer, "{}", line_view(&bytes[start..], start)).unwrap();
+    reader.seek(io::SeekFrom::Current(info.seek as i64))?;
+    let mut total = 0;
+    let mut bytecount;
+    while total < info.length {
+        bytecount = reader.read(&mut buffer)?;
+        if bytecount == 0 {
+            break;
+        };
+        let row = line_view(&buffer, total);
+        writer.write_all(row.as_bytes())?;
+        total += bytecount;
+    }
+    Ok(())
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Opt::from_args();
 
-    let content = fs::read(args.file)?;
+    let hexinfo = ViewInfo {
+        filename: args.file,
+        length: args.length,
+        seek: args.seek,
+    };
 
-    let file_length = content.len();
-
-    if args.seek > file_length {
-        eprintln!(
-            "Cannot seek {} bytes in a file with size {} bytes.",
-            args.seek, file_length
-        );
-        process::exit(1);
-    }
-    hex_view(&content, args.seek);
+    hex_view(hexinfo)?;
 
     Ok(())
 }
