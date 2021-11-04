@@ -1,6 +1,6 @@
 # rex
 
-Hex Editor
+Hex dump
 ---
 
-A minimal poor man's hex editor (viewer for now).
+A minimal poor man's hexdump.
